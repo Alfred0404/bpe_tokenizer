@@ -11,21 +11,35 @@ class BPE:
         """
         Initializes the BPE object with a given corpus.
         Args:
-            corpus (dict): The input corpus for BPE.
+            text (str): The input corpus for BPE.
         """
-        self.text = text
-        self.corpus = {}  # format: {('w','o','r','d', '</w>): 2}
-        self.vocab = []  # vocabulaire du corpus
+        self.text: str = text
+        self.corpus: dict[tuple[str], int] = {}  # format: {('w','o','r','d', '</w>): 2}
+        self.vocab: list[str] = []  # vocabulaire du corpus
+        self.bpe_merges: list[str] = []  # Liste des fusions (paires) effectuées
 
     def create_corpus(self):
         """
         Tokenizes the input text using Byte Pair Encoding (BPE).
-        Args:
-            text (str): The input text to tokenize.
+        """
+        self.text = self.clean_text(self.text)
+        for word in self.text.split():
+            token = tuple(list(word) + ["</w>"])
+            if token not in self.corpus:
+                self.corpus[token] = 1
+            else:
+                self.corpus[token] += 1
+        logging.info(f"Corpus: {self.corpus}")
+
+    def clean_text(self, text: str) -> str:
+        """
+        Cleans the input text by removing special characters and converting to lowercase.
         """
 
-        # delete all special characters and convert to lower case
-        chars_to_delete = [
+        if text is None:
+            raise ValueError("Text cannot be None")
+
+        chars_to_delete: list[str] = [
             "!",
             "@",
             "#",
@@ -59,20 +73,10 @@ class BPE:
             "`",
             "~",
         ]
-
         for char in chars_to_delete:
-            self.text = self.text.replace(char, " ")
-
-        self.text = self.text.lower()
-
-        for word in self.text.split():
-            token = tuple(list(word) + ["</w>"])
-            if token not in self.corpus:
-                self.corpus[token] = 1
-            else:
-                self.corpus[token] += 1
-
-        logging.info(f"Corpus: {self.corpus}")
+            text = text.replace(char, " ")
+        text = text.lower()
+        return text
 
     def get_vocab(self):
         """
@@ -84,7 +88,7 @@ class BPE:
         self.vocab = list(vocab)
         logging.info(f"Vocabulary: {self.vocab}")
 
-    def find_pairs(self):
+    def find_pairs(self) -> dict[tuple[str], int]:
         """
         Finds all the pairs of adjacent symbols in the vocabulary.
         Returns:
@@ -95,7 +99,7 @@ class BPE:
             for i in range(len(word) - 1):
                 pair = (word[i], word[i + 1])
                 pairs[pair] += freq
-            logging.info(f"Pairs: {pairs}")
+        logging.info(f"Pairs: {pairs}")
         return pairs
 
     def update_vocab(self):
@@ -110,13 +114,16 @@ class BPE:
         most_freq_pair = max(pairs_freq, key=pairs_freq.get)
         logging.info(f"Most frequent pair: {most_freq_pair}")
 
+        # Ajout de la paire fusionnée à la liste bpe_merges
+        self.bpe_merges.append(most_freq_pair)
+
         new_corpus = {}
         for word, freq in self.corpus.items():
             new_word = []
             i = 0
             while i < len(word):
                 if i < len(word) - 1 and (word[i], word[i + 1]) == most_freq_pair:
-                    new_word.append(most_freq_pair[0] + most_freq_pair[1])
+                    new_word.append(word[i] + word[i + 1])
                     i += 2
                 else:
                     new_word.append(word[i])
@@ -133,15 +140,45 @@ class BPE:
         logging.info(f"Updated corpus: {self.corpus}")
         logging.info(f"Updated vocab: {self.vocab}")
 
-    def learn_bpe(self, iterations: int):
+    def train(self, iterations: int):
         """
         Learns the BPE codes from the corpus.
         """
-        # Implementation of BPE learning algorithm goes here
-
         self.create_corpus()
         self.get_vocab()
 
         for i in range(iterations):
             self.update_vocab()
             logging.info(f"Iteration {i + 1}/{iterations} completed.")
+
+    def tokenize(self, text: str):
+        """
+        Tokenizes the input text using the learned BPE codes.
+        Args:
+            text (str): The input text to tokenize.
+        Returns:
+            list[list[str]]: Tokenized text by word.
+        """
+        # clean the text
+        text = self.clean_text(text)
+
+        words = text.strip().split()
+        tokenized_words = []
+
+        for word in words:
+            # Découpe le mot en symboles individuels
+            symbols = list(word) + ["</w>"]
+
+            # Applique les fusions dans l’ordre appris
+            for merge in self.bpe_merges:
+                i = 0
+                while i < len(symbols) - 1:
+                    if (symbols[i], symbols[i + 1]) == merge:
+                        symbols[i : i + 2] = [symbols[i] + symbols[i + 1]]
+                        i = max(i - 1, 0)  # recule pour vérifier les nouvelles fusions
+                    else:
+                        i += 1
+
+            tokenized_words.append(symbols)
+
+        return tokenized_words
