@@ -7,28 +7,30 @@ class BPE:
     A class to represent the Byte Pair Encoding (BPE) algorithm.
     """
 
-    def __init__(self, text: str):
+    def __init__(self, texts: str):
         """
         Initializes the BPE object with a given corpus.
         Args:
             text (str): The input corpus for BPE.
         """
-        self.text: str = text
+        self.texts: list[str] = texts
         self.corpus: dict[tuple[str], int] = {}  # format: {('w','o','r','d', '</w>): 2}
-        self.vocab: list[str] = []  # vocabulaire du corpus
+        self.vocab: dict[int, str] = {}  # vocabulaire du corpus as {id: vocab}
         self.bpe_merges: list[str] = []  # Liste des fusions (paires) effectuées
 
     def create_corpus(self):
         """
         Tokenizes the input text using Byte Pair Encoding (BPE).
         """
-        self.text = self.clean_text(self.text)
-        for word in self.text.split():
-            token = tuple(list(word) + ["</w>"])
-            if token not in self.corpus:
-                self.corpus[token] = 1
-            else:
-                self.corpus[token] += 1
+        self.texts = [self.clean_text(text) for text in self.texts]
+        for text in self.texts:  # Parcours de chaque texte
+            for word in text.split():
+                token = tuple(list(word) + ["</w>"])  # Ajout du marqueur de fin </w>
+                if token not in self.corpus:
+                    self.corpus[token] = 1
+                else:
+                    self.corpus[token] += 1
+
         logging.info(f"Corpus: {self.corpus}")
 
     def clean_text(self, text: str) -> str:
@@ -80,12 +82,13 @@ class BPE:
 
     def get_vocab(self):
         """
-        Returns the vocabulary of the BPE object.
+        Returns the vocabulary of the BPE object as a dict {id: vocab}.
         """
-        vocab = set()
+        vocab_set = set()
         for word in self.corpus:
-            vocab.update(word)
-        self.vocab = list(vocab)
+            vocab_set.update(word)
+        vocab_list = list(vocab_set)
+        self.vocab = {i: v for i, v in enumerate(vocab_list)}
         logging.info(f"Vocabulary: {self.vocab}")
 
     def find_pairs(self) -> dict[tuple[str], int]:
@@ -151,34 +154,22 @@ class BPE:
             self.update_vocab()
             logging.info(f"Iteration {i + 1}/{iterations} completed.")
 
-    def tokenize(self, text: str):
+    def tokens_to_ids(self, tokens: list[str]) -> list[int]:
         """
-        Tokenizes the input text using the learned BPE codes.
+        Converts tokens to their corresponding IDs in the vocabulary.
         Args:
-            text (str): The input text to tokenize.
+            tokens (list[str]): List of tokens to convert.
         Returns:
-            list[list[str]]: Tokenized text by word.
+            list[int]: List of token IDs.
         """
-        # clean the text
-        text = self.clean_text(text)
+        return [k for token in tokens for k, v in self.vocab.items() if v == token]
 
-        words = text.strip().split()
-        tokenized_words = []
-
-        for word in words:
-            # Découpe le mot en symboles individuels
-            symbols = list(word) + ["</w>"]
-
-            # Applique les fusions dans l’ordre appris
-            for merge in self.bpe_merges:
-                i = 0
-                while i < len(symbols) - 1:
-                    if (symbols[i], symbols[i + 1]) == merge:
-                        symbols[i : i + 2] = [symbols[i] + symbols[i + 1]]
-                        i = max(i - 1, 0)  # recule pour vérifier les nouvelles fusions
-                    else:
-                        i += 1
-
-            tokenized_words.append(symbols)
-
-        return tokenized_words
+    def ids_to_tokens(self, ids: list[int]) -> list[str]:
+        """
+        Converts IDs to their corresponding tokens in the vocabulary.
+        Args:
+            ids (list[int]): List of IDs to convert.
+        Returns:
+            list[str]: List of tokens.
+        """
+        return [self.vocab[i] for i in ids if i in self.vocab]
